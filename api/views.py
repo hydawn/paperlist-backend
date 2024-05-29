@@ -1,3 +1,59 @@
-from django.shortcuts import render
+import base64
+from http import HTTPStatus
+from hashlib import md5
+
+from django.db import transaction
+from django.http import JsonResponse
+from django.core.files.base import ContentFile
+
+from .models import Paper, PaperByScholar
+from .decorators import allow_methods, login_required, has_json_payload, \
+        paperid_exist, user_can_modify_paper
+
+
+def save_paper(request):
+    form: dict = request.json_payload
+    form['user'] = request.user
+    file_binary = base64.b64decode(form['file_content'])
+    form['file_content'] = ContentFile(
+            content=file_binary,
+            name=md5(file_binary).hexdigest())
+    # extract authors
+    authors: list[str] = form.pop('authors')
+    # TODO: make these atomic
+    paper = Paper(**form)
+    paper.save()
+    print(f'paper {form["title"]} is made (but not saved yet)')
+    return paper, authors
+
 
 # Create your views here.
+@allow_methods(['POST'])
+@login_required()
+@has_json_payload()
+def post_insert_paper(request):
+    ''' create scholar if not exist '''
+    title = request.json_payload['title']
+    if len(Paper.objects.filter(title=title)) != 0:
+        return JsonResponse({'status': 'error', 'error': f'paper of title {title} already exists'}, status=HTTPStatus.BAD_REQUEST)
+    try:
+        with transaction.atomic():
+            paper, authors = save_paper(request)
+            for i in authors:
+                PaperByScholar.objects.create(paper=paper, scholar=i)
+                print(f'scholar {i} is inserted')
+    except Exception as err:
+        return JsonResponse({'status': 'error', 'error': f'exception occured: {err}'}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+    return JsonResponse({'status': 'Paper saved'})
+
+
+# Create your views here.
+@allow_methods(['POST'])
+@login_required()
+@has_json_payload()
+@paperid_exist()
+@user_can_modify_paper()
+def post_delete_paper(request):
+    ''' create scholar if not exist '''
+    request.paper.delete()
+    return JsonResponse({'status': 'Paper deleted'})

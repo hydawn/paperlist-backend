@@ -3,7 +3,10 @@
 import json
 from http import HTTPStatus
 
+from django.db import models
 from django.http import JsonResponse
+
+from .models import Paper
 
 
 def has_json_payload():
@@ -30,9 +33,8 @@ def allow_methods(allowed_methods: list[str]):
     '''
     def decor(func):
         def wrapper(request):
-            print(type(request))
             if request.method not in allowed_methods:
-                return JsonResponse({'error': 'Method Not Allowed'}, status=HTTPStatus.METHOD_NOT_ALLOWED)
+                return JsonResponse({'status': 'error', 'error': 'Method Not Allowed'}, status=HTTPStatus.METHOD_NOT_ALLOWED)
             return func(request)
         return wrapper
     return decor
@@ -46,7 +48,30 @@ def login_required():
         def wrapper(request):
             if not request.user.is_authenticated:
                 # or not request.user.is_permitted:
-                return JsonResponse({'error': 'Unauthorized action, login required'}, status=HTTPStatus.UNAUTHORIZED)
+                return JsonResponse({'status': 'error', 'error': 'Unauthorized action, login required'}, status=HTTPStatus.UNAUTHORIZED)
+            return func(request)
+        return wrapper
+    return decor
+
+
+def paperid_exist():
+    def decor(func):
+        def wrapper(request):
+            paperid = json.loads(request.body)['paperid']
+            try:
+                request.paper = Paper.objects.get(pk=paperid)
+            except models.ObjectDoesNotExist:
+                return JsonResponse({'status': 'error', 'error': f'paper of id {paperid} does not exist'}, status=HTTPStatus.BAD_REQUEST)
+            return func(request)
+        return wrapper
+    return decor
+
+
+def user_can_modify_paper():
+    def decor(func):
+        def wrapper(request):
+            if request.user != request.paper.user:
+                return JsonResponse({'status': 'error', 'error': 'user not authorized for this action'}, status=HTTPStatus.UNAUTHORIZED)
             return func(request)
         return wrapper
     return decor
