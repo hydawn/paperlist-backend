@@ -1,3 +1,5 @@
+import base64
+
 from django.contrib.auth.models import User
 from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
@@ -22,6 +24,24 @@ class Paper(TypedModel):
     journal = models.CharField(max_length=1024)
     total_citations = models.IntegerField(validators=[MinValueValidator(0, message='citations must be at least 0')])
     private = models.BooleanField(default=False)
+
+    @property
+    def json(self):
+        with open(self.file_content.name, 'rb') as file:
+            file_content = base64.b64encode(file.read()).decode('utf-8')
+        return {
+                'paperid': str(self.id),
+                'userid': str(self.user.id),
+                'username': self.user.username,
+                'title': self.title,
+                'abstract': self.abstract,
+                'file_name': self.file_name,
+                'file_content': file_content,
+                'publication_date': str(self.publication_date),
+                'journal': self.journal,
+                'total_citations': self.total_citations,
+                'private': self.private,
+                }
 
 
 #class Scholar(TypedModel):

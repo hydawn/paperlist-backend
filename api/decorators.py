@@ -75,3 +75,18 @@ def user_can_modify_paper():
             return func(request)
         return wrapper
     return decor
+
+
+def has_query_params(params: list[str]):
+    '''
+    GET request must have certain query params
+    '''
+    def decor(func):
+        def wrapper(request):
+            for i in params:
+                if request.GET.get(i) is None:
+                    return JsonResponse({'status': 'error', 'error': f'failed to get params: {i}'}, status=HTTPStatus.BAD_REQUEST)
+            request.params = request.GET
+            return func(request)
+        return wrapper
+    return decor
