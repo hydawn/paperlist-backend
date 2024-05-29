@@ -74,20 +74,33 @@ def post_delete_paper(request):
 @login_required()
 def get_search_paper(request):
     ''' search by title/uploader/author/journal '''
-    params = request.GET
+    params: dict = request.GET
+    use_regex: bool = request.GET.get('regex', 'False') == 'True'
     try:
         per_page = int(params['per_page'])
         page = int(params['page'])
     except KeyError:
         return JsonResponse({'error': 'per_page and page should be integer number'}, status=HTTPStatus.BAD_REQUEST)
-    queryset = Paper.objects.filter(title__regex=params.get('title'))
+    if use_regex:
+        queryset = Paper.objects.filter(title__regex=params.get('title'))
+    else:
+        queryset = Paper.objects.filter(title__icontains=params.get('title'))
     if params.get('journal'):
-        queryset = queryset.filter(journal=params.get('journal'))
+        if use_regex:
+            queryset = queryset.filter(journal__regex=params.get('journal'))
+        else:
+            queryset = queryset.filter(journal__icontains=params.get('journal'))
     if params.get('uploader'):
-        queryset = queryset.filter(user__username__regex=params.get('uploader'))
+        if use_regex:
+            queryset = queryset.filter(user__username__regex=params.get('uploader'))
+        else:
+            queryset = queryset.filter(user__username__icontains=params.get('uploader'))
     if params.get('author'):
-        queryset = queryset.filter(paperbyscholar__scholar__regex=params.get('author'))
+        if use_regex:
+            queryset = queryset.filter(paperbyscholar__scholar__regex=params.get('author'))
+        else:
+            queryset = queryset.filter(paperbyscholar__scholar__icontains=params.get('author'))
     # then filter private
     # test this some day
     queryset = queryset.filter(Q(private=False) | Q(user=request.user))
-    return JsonResponse({'status': 'ok', 'data': [i.json for i in paginate_queryset(queryset, per_page, page)]})
+    return JsonResponse({'status': 'ok', 'data': [i.json for i in paginate_queryset(queryset.order_by('id'), per_page, page)]})
