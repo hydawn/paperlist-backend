@@ -5,13 +5,13 @@ from hashlib import md5
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.db.models import QuerySet, Q
+from django.db.models import QuerySet, Q, Avg
 from django.http import JsonResponse
 
-from .models import Paper, PaperByScholar, PaperTextComments, PaperStarComments
+from .models import Paper, PaperByScholar, PaperSet, PaperTextComments, PaperStarComments
 from .decorators import allow_methods, login_required, has_json_payload, \
         paperid_exist, user_can_modify_paper, has_query_params, \
-        user_can_comment_paper
+        user_can_comment_paper, user_can_view_paper
 
 
 def paginate_queryset(queryset: QuerySet, per_page: int, page: int = 1):
@@ -67,7 +67,7 @@ def post_insert_paper(request):
 @allow_methods(['POST'])
 @login_required()
 @has_json_payload()
-@paperid_exist()
+@paperid_exist('POST')
 @user_can_modify_paper()
 def post_delete_paper(request):
     ''' create scholar if not exist '''
@@ -85,7 +85,7 @@ def get_search_paper(request):
     try:
         per_page = int(params['per_page'])
         page = int(params['page'])
-    except KeyError:
+    except ValueError:
         return JsonResponse({'error': 'per_page and page should be integer number'}, status=HTTPStatus.BAD_REQUEST)
     if params.get('journal'):
         if use_regex:
@@ -125,24 +125,103 @@ def get_search_paper(request):
 @allow_methods(['POST'])
 @login_required()
 @has_json_payload()
-@paperid_exist()
+@paperid_exist('POST')
 @user_can_comment_paper()
 def post_comment_paper(request):
     ''' create scholar if not exist '''
-    PaperTextComments.objects.create(paper=request.paper, user=request.user, comment=request.json_payload.comment)
+    try:
+        comment = request.json_payload['comment']
+    except KeyError:
+        return JsonResponse({'error': 'comment does not exist!'}, status=HTTPStatus.BAD_REQUEST)
+    PaperTextComments.objects.create(paper=request.paper, user=request.user, comment=comment)
     return JsonResponse({'status': 'ok'})
 
 
 @allow_methods(['POST'])
 @login_required()
 @has_json_payload()
-@paperid_exist()
+@paperid_exist('POST')
 @user_can_comment_paper()
 def post_review_paper(request):
     ''' make stars '''
     try:
-        star = int(request.json_payload.star)
+        star = int(request.json_payload['star'])
     except KeyError:
-        return JsonResponse({'error': 'star gotta be a number 1-5'})
+        return JsonResponse({'error': 'star does not exist!'}, status=HTTPStatus.BAD_REQUEST)
+    except ValueError:
+        return JsonResponse({'error': 'star gotta be a number 1-5'}, status=HTTPStatus.BAD_REQUEST)
+    if len(PaperStarComments.objects.filter(paper=request.paper, user=request.user)) != 0:
+        return JsonResponse({'status': 'error', 'error': 'already exist'}, status=HTTPStatus.BAD_REQUEST)
     PaperStarComments.objects.create(paper=request.paper, user=request.user, star=star)
     return JsonResponse({'status': 'ok'})
+
+
+@allow_methods(['GET'])
+@login_required()
+@has_query_params(['paperid', 'per_page', 'page'])
+@paperid_exist('GET')
+@user_can_view_paper()
+def get_search_paper_comment(request):
+    try:
+        per_page = int(request.GET['per_page'])
+        page = int(request.GET['page'])
+    except ValueError:
+        return JsonResponse({'error': 'per_page and page should be integer number'}, status=HTTPStatus.BAD_REQUEST)
+    paper_comment = PaperTextComments.objects.filter(paper=request.paper).order_by('commented_on')
+    paper_comment, total_page, current_page = paginate_queryset(paper_comment, per_page, page)
+    comment_list = [{'comment': i.comment, 'commented_on': i.commented_on} for i in paper_comment]
+    return JsonResponse(
+            {
+                'status': 'ok',
+                'data': {
+                    'comment_list': comment_list,
+                    'total_page': total_page,
+                    'current_page': current_page,
+                }
+            })
+
+
+@allow_methods(['GET'])
+@login_required()
+@has_query_params(['paperid'])
+@paperid_exist('GET')
+@user_can_view_paper()
+def get_get_paper_review(request):
+    # review is the avg of all
+    review: float = PaperStarComments.objects.all().aggregate(Avg('star'))['star__avg']
+    return JsonResponse({'status': 'ok', 'data': { 'review': round(review, 1) }})
+
+
+@allow_methods(['GET'])
+@login_required()
+@has_query_params(['paperid'])
+@paperid_exist('GET')
+@user_can_view_paper()
+def get_paper_detail(request):
+    return JsonResponse({'status': 'ok', 'data': request.paper.simple_json})
+
+
+@allow_methods(['GET'])
+@login_required()
+@has_query_params(['paperid'])
+@paperid_exist('GET')
+@user_can_view_paper()
+def get_paper_content(request):
+    return JsonResponse({'status': 'ok', 'data': request.paper.detail_json})
+
+
+@allow_methods(['POST'])
+@login_required()
+@has_json_payload()
+def post_insert_paperset(request):
+    PaperSet.objects.create(**request.json_payload)
+    return JsonResponse({'status': 'ok', 'message': 'paperset created'})
+
+
+@allow_methods(['POST'])
+@login_required()
+@has_json_payload()
+@paperid_exist('POST')
+@user_can_view_paper()
+def post_add_to_paperset(request):
+    pass

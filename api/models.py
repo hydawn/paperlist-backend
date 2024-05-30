@@ -1,8 +1,9 @@
 import base64
 
 from django.contrib.auth.models import User
-from django.db import models
 from django.core.validators import MinValueValidator, MaxValueValidator
+from django.db import models
+from django.db.models import UniqueConstraint
 
 
 class TypedModel(models.Model):
@@ -97,6 +98,16 @@ class PaperTextComments(TypedModel):
     # commented by user
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     comment = models.CharField(max_length=4096)
+    commented_on = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def json(self):
+        return {
+                'paperid': str(self.paper.id),
+                'userid': str(self.user.id),
+                'username': self.user.username,
+                'comment': self.comment,
+            }
 
 
 class PaperStarComments(TypedModel):
@@ -110,6 +121,23 @@ class PaperStarComments(TypedModel):
                 MaxValueValidator(5, message='stars cannot be more than 5')
             ]
         )
+    commented_on = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            UniqueConstraint(fields=['paper', 'user'], name='unique_paper_user')
+        ]
+
+    @property
+    def json(self):
+        return {
+                'paperid': str(self.paper.id),
+                'userid': str(self.user.id),
+                'username': self.user.username,
+                'star': self.star,
+            }
+
+
 
 
 #class PaperSetComments(TypedModel):

@@ -54,10 +54,17 @@ def login_required():
     return decor
 
 
-def paperid_exist():
+def paperid_exist(method: str):
     def decor(func):
         def wrapper(request):
-            paperid = json.loads(request.body)['paperid']
+            if method in ['post', 'POST']:
+                paperid = json.loads(request.body)['paperid']
+            else:
+                # make it int?
+                try:
+                    paperid = int(request.GET.get('paperid'))
+                except ValueError:
+                    return JsonResponse({'status': 'error', 'error': 'paperid should be integer'}, status=HTTPStatus.BAD_REQUEST)
             try:
                 request.paper = Paper.objects.get(pk=paperid)
             except models.ObjectDoesNotExist:
@@ -97,6 +104,18 @@ def user_can_comment_paper():
         def wrapper(request):
             if request.user != request.paper.user and request.paper.private:
                 return JsonResponse({'status': 'error', 'error': 'user not authorized to comment'}, status=HTTPStatus.UNAUTHORIZED)
+            return func(request)
+        return wrapper
+    return decor
+
+
+def user_can_view_paper():
+    def decor(func):
+        def wrapper(request):
+            if request.user == request.paper.user:
+                return func(request)
+            if request.paper.private:
+                return JsonResponse({'status': 'error', 'error': 'user not authorized to view'}, status=HTTPStatus.UNAUTHORIZED)
             return func(request)
         return wrapper
     return decor

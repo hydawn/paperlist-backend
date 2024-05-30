@@ -2,7 +2,10 @@
 
 from django.urls import path
 
-from .views import get_search_paper, post_delete_paper, post_insert_paper
+from .views import get_search_paper, post_delete_paper, post_insert_paper, \
+        get_paper_detail, get_paper_content, post_insert_paperset, \
+        post_comment_paper, post_review_paper, get_get_paper_review, \
+        get_search_paper_comment
 from .views_login import post_login, post_logout, post_signup, get_user_detail, \
         get_user_loggedin
 
@@ -15,4 +18,11 @@ urlpatterns = [
     path('insert_paper', post_insert_paper),
     path('delete_paper', post_delete_paper),
     path('search_paper', get_search_paper),
+    path('paper_detail', get_paper_detail),
+    path('paper_content', get_paper_content),
+    path('comment_paper', post_comment_paper),
+    path('review_paper', post_review_paper),
+    path('search_paper_comment', get_search_paper_comment),
+    path('get_paper_review', get_get_paper_review),
+    path('insert_paperset', post_insert_paperset),
 ]
