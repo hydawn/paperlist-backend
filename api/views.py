@@ -87,7 +87,7 @@ def get_search_paper(request):
         page = int(params['page'])
     except ValueError:
         return JsonResponse({'error': 'per_page and page should be integer number'}, status=HTTPStatus.BAD_REQUEST)
-    if params.get('journal'):
+    if params.get('title'):
         if use_regex:
             queryset = Paper.objects.filter(title__regex=params.get('title'))
         elif params.get('title') == '':
