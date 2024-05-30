@@ -26,7 +26,7 @@ class Paper(TypedModel):
     private = models.BooleanField(default=False)
 
     @property
-    def json(self):
+    def detail_json(self):
         with open(self.file_content.name, 'rb') as file:
             file_content = base64.b64encode(file.read()).decode('utf-8')
         return {
@@ -40,7 +40,20 @@ class Paper(TypedModel):
                 'publication_date': str(self.publication_date),
                 'journal': self.journal,
                 'total_citations': self.total_citations,
-                'private': self.private,
+                'is_private': self.private,
+                }
+
+    @property
+    def simple_json(self):
+        return {
+                'paperid': str(self.id),
+                'userid': str(self.user.id),
+                'username': self.user.username,
+                'title': self.title,
+                'publication_date': str(self.publication_date),
+                'journal': self.journal,
+                'total_citations': self.total_citations,
+                'is_private': self.private,
                 }
 
 
@@ -91,7 +104,7 @@ class PaperStarComments(TypedModel):
     # commented by user
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     # from 1 to 5
-    stars = models.IntegerField(
+    star = models.IntegerField(
             validators=[
                 MinValueValidator(1, message='stars must be at least 1'),
                 MaxValueValidator(5, message='stars cannot be more than 5')
@@ -106,18 +119,18 @@ class PaperStarComments(TypedModel):
 #    comment = models.CharField(max_length=4096)
 
 
-# TODO: maybe I should use a privilaged user to manage papertags
-# and after that, paper tags can have description
-class PaperTags(TypedModel):
-    tag_name = models.CharField(max_length=128)
-    # tag_description = models.CharField(max_length=1024)
-
-
-class PaperWithTag(TypedModel):
-    paper = models.ForeignKey(Paper, on_delete=models.CASCADE)
-    tag = models.ForeignKey(PaperTags, on_delete=models.CASCADE)
-
-
-class PaperSetWithTag(TypedModel):
-    paper = models.ForeignKey(Paper, on_delete=models.CASCADE)
-    tag = models.ForeignKey(PaperTags, on_delete=models.CASCADE)
+# # TODO: maybe I should use a privilaged user to manage papertags
+# # and after that, paper tags can have description
+# class PaperTags(TypedModel):
+#     tag_name = models.CharField(max_length=128)
+#     # tag_description = models.CharField(max_length=1024)
+#
+#
+# class PaperWithTag(TypedModel):
+#     paper = models.ForeignKey(Paper, on_delete=models.CASCADE)
+#     tag = models.ForeignKey(PaperTags, on_delete=models.CASCADE)
+#
+#
+# class PaperSetWithTag(TypedModel):
+#     paper = models.ForeignKey(Paper, on_delete=models.CASCADE)
+#     tag = models.ForeignKey(PaperTags, on_delete=models.CASCADE)

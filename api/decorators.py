@@ -90,3 +90,13 @@ def has_query_params(params: list[str]):
             return func(request)
         return wrapper
     return decor
+
+
+def user_can_comment_paper():
+    def decor(func):
+        def wrapper(request):
+            if request.user != request.paper.user and request.paper.private:
+                return JsonResponse({'status': 'error', 'error': 'user not authorized to comment'}, status=HTTPStatus.UNAUTHORIZED)
+            return func(request)
+        return wrapper
+    return decor

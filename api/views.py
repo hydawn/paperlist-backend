@@ -2,23 +2,29 @@ import base64
 from http import HTTPStatus
 from hashlib import md5
 
-from django.core.paginator import Paginator
+from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.db.models import QuerySet, Q
 from django.http import JsonResponse
 
-from .models import Paper, PaperByScholar
+from .models import Paper, PaperByScholar, PaperTextComments, PaperStarComments
 from .decorators import allow_methods, login_required, has_json_payload, \
-        paperid_exist, user_can_modify_paper, has_query_params
+        paperid_exist, user_can_modify_paper, has_query_params, \
+        user_can_comment_paper
 
 
 def paginate_queryset(queryset: QuerySet, per_page: int, page: int = 1):
     # Paginate the queryset
     paginator = Paginator(queryset, per_page)
-    page_obj = paginator.get_page(page)
+    try:
+        page_list = paginator.page(page)
+    except PageNotAnInteger:
+        page_list = paginator.page(1)
+    except EmptyPage:
+        page_list = paginator.page(paginator.num_pages)
     # Access the objects for the current page
-    return page_obj.object_list
+    return page_list, paginator.num_pages, page_list.number
 
 
 def save_paper(request):
@@ -54,7 +60,7 @@ def post_insert_paper(request):
                 print(f'scholar {i} is inserted')
     except Exception as err:
         return JsonResponse({'status': 'error', 'error': f'exception occured: {err}'}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
-    return JsonResponse({'status': 'Paper saved'})
+    return JsonResponse({'status': 'ok', 'message': 'paper inserted'})
 
 
 # Create your views here.
@@ -66,41 +72,77 @@ def post_insert_paper(request):
 def post_delete_paper(request):
     ''' create scholar if not exist '''
     request.paper.delete()
-    return JsonResponse({'status': 'Paper deleted'})
+    return JsonResponse({'status': 'ok', 'message': 'paper deleted'})
 
 
 @allow_methods(['GET'])
-@has_query_params(['title', 'per_page', 'page'])
+@has_query_params(['per_page', 'page'])
 @login_required()
 def get_search_paper(request):
     ''' search by title/uploader/author/journal '''
     params: dict = request.GET
-    use_regex: bool = request.GET.get('regex', 'False') == 'True'
+    use_regex: bool = request.GET.get('regex', 'False') in ['true', 'True']
     try:
         per_page = int(params['per_page'])
         page = int(params['page'])
     except KeyError:
         return JsonResponse({'error': 'per_page and page should be integer number'}, status=HTTPStatus.BAD_REQUEST)
-    if use_regex:
-        queryset = Paper.objects.filter(title__regex=params.get('title'))
+    if params.get('journal'):
+        if use_regex:
+            queryset = Paper.objects.filter(title__regex=params.get('title'))
+        elif params.get('title') == '':
+            queryset = Paper.objects.all()
+        else:
+            queryset = Paper.objects.filter(title__icontains=params.get('title'))
     else:
-        queryset = Paper.objects.filter(title__icontains=params.get('title'))
+        queryset = Paper.objects.all()
     if params.get('journal'):
         if use_regex:
             queryset = queryset.filter(journal__regex=params.get('journal'))
-        else:
+        elif params.get('journal') != '':
             queryset = queryset.filter(journal__icontains=params.get('journal'))
     if params.get('uploader'):
         if use_regex:
             queryset = queryset.filter(user__username__regex=params.get('uploader'))
-        else:
+        elif params.get('uploader') != '':
             queryset = queryset.filter(user__username__icontains=params.get('uploader'))
     if params.get('author'):
         if use_regex:
             queryset = queryset.filter(paperbyscholar__scholar__regex=params.get('author'))
-        else:
+        elif params.get('author') != '':
             queryset = queryset.filter(paperbyscholar__scholar__icontains=params.get('author'))
     # then filter private
     # test this some day
     queryset = queryset.filter(Q(private=False) | Q(user=request.user))
-    return JsonResponse({'status': 'ok', 'data': [i.json for i in paginate_queryset(queryset.order_by('id'), per_page, page)]})
+    page, total_page, current_page = paginate_queryset(queryset.order_by('id'), per_page, page)
+    return JsonResponse({'status': 'ok', 'data': {
+            'data_list': [i.simple_json for i in page],
+            'total_page': total_page,
+            'current_page': current_page,
+        }})
+
+
+@allow_methods(['POST'])
+@login_required()
+@has_json_payload()
+@paperid_exist()
+@user_can_comment_paper()
+def post_comment_paper(request):
+    ''' create scholar if not exist '''
+    PaperTextComments.objects.create(paper=request.paper, user=request.user, comment=request.json_payload.comment)
+    return JsonResponse({'status': 'ok'})
+
+
+@allow_methods(['POST'])
+@login_required()
+@has_json_payload()
+@paperid_exist()
+@user_can_comment_paper()
+def post_review_paper(request):
+    ''' make stars '''
+    try:
+        star = int(request.json_payload.star)
+    except KeyError:
+        return JsonResponse({'error': 'star gotta be a number 1-5'})
+    PaperStarComments.objects.create(paper=request.paper, user=request.user, star=star)
+    return JsonResponse({'status': 'ok'})
