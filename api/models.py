@@ -103,10 +103,11 @@ class PaperTextComments(TypedModel):
     @property
     def json(self):
         return {
-                'paperid': str(self.paper.id),
+                # 'paperid': str(self.paper.id),
                 'userid': str(self.user.id),
                 'username': self.user.username,
                 'comment': self.comment,
+                'commented_on': self.commented_on,
             }
 
 
