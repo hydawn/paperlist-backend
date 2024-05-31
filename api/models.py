@@ -96,11 +96,21 @@ class PaperSet(TypedModel):
     private = models.BooleanField(default=False)
     # tags = models.CharField(max_length=4096, null=True)
 
+    @property
+    def json(self):
+        return {
+                'userid': str(self.user.id),
+                'username': self.user.username,
+                'name': self.name,
+                'description': self.description,
+                'private': self.private
+                }
+
 
 class PaperSetContent(TypedModel):
     ''' the content of paper set '''
-    paper_set = models.ForeignKey(PaperSet, on_delete=models.CASCADE)
-    paper = models.ForeignKey(Paper, on_delete=models.CASCADE)
+    paper_set = models.ForeignKey(PaperSet, on_delete=models.CASCADE, related_name='has_paper')
+    paper = models.ForeignKey(Paper, on_delete=models.CASCADE, related_name='in_paperset')
 
     class Meta:
         constraints = [

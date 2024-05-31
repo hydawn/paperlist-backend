@@ -2,16 +2,18 @@ import base64
 from http import HTTPStatus
 from hashlib import md5
 
+from django.contrib.auth.models import User
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.db.models import QuerySet, Q, Avg
 from django.http import JsonResponse
 
-from .models import Paper, PaperByScholar, PaperSet, PaperTextComments, PaperStarComments
+from .models import Paper, PaperByScholar, PaperSet, PaperTextComments, \
+        PaperStarComments, PaperSetContent
 from .decorators import allow_methods, login_required, has_json_payload, \
-        paperid_exist, user_can_modify_paper, has_query_params, \
-        user_can_comment_paper, user_can_view_paper
+        paperid_exist, paperid_list_exist, paperset_exists, user_can_modify_paper, has_query_params, \
+        user_can_comment_paper, user_can_view_paper, user_paperset_action
 
 
 def paginate_queryset(queryset: QuerySet, per_page: int, page: int = 1):
@@ -72,6 +74,48 @@ def search_paper(params: dict[str, str], user: User) -> QuerySet:
     # then filter private
     # test this some day
     return queryset.filter(Q(private=False) | Q(user=user))
+
+
+def search_paperset_only(params: dict[str, str], user: User) -> QuerySet:
+    use_regex = params.get('regex', 'False') in ['true', 'True']
+    name = params.get('name')
+    if not name:
+        queryset = PaperSet.objects.all()
+    elif use_regex:
+        queryset = PaperSet.objects.filter(name__regex=name)
+    else:
+        queryset = PaperSet.objects.filter(name__icontains=name)
+    description = params.get('description')
+    if description:
+        if use_regex:
+            queryset = queryset.filter(description__regex=description)
+        else:
+            queryset = queryset.filter(description__icontains=description)
+    creater = params.get('creater')
+    if creater:
+        if use_regex:
+            queryset = queryset.filter(user__username__regex=creater)
+        else:
+            queryset = queryset.filter(user__username__icontains=creater)
+    return queryset.filter(Q(private=False) | Q(user=user))
+
+
+def search_paperset_bypaper(params: dict[str, str], user: User) -> QuerySet:
+    search_paper_params = {}
+    for i in ['papertitle', 'paperjournal', 'paperuploader', 'paperauthor']:
+        if i in params:
+            search_paper_params[i[len('paper'):]] = params[i]
+    paper_queryset = search_paper(search_paper_params, user)
+    paper_set_content = PaperSetContent.objects.filter(paper__in=paper_queryset)
+    paper_set_ids = paper_set_content.values_list('paper_set', flat=True).distinct()
+    return PaperSet.objects.filter(id__in=paper_set_ids).filter(Q(private=False) | Q(user=user))
+
+
+def search_paperset(params: dict[str, str], user: User) -> QuerySet:
+    for i in ['papertitle', 'paperjournal', 'paperuploader', 'paperauthor']:
+        if i in params:
+            return search_paperset_bypaper(params, user)
+    return search_paperset_only(params, user)
 
 
 # Create your views here.
@@ -230,7 +274,93 @@ def post_insert_paperset(request):
 @allow_methods(['POST'])
 @login_required()
 @has_json_payload()
-@paperid_exist('POST')
-@user_can_view_paper()
+@paperset_exists('POST')
+@user_paperset_action('write')
+def post_change_paperset(request):
+    changed = False
+    if request.json_payload.get('name'):
+        request.paperset.name = request.json_payload.get('name')
+        changed = True
+    if request.json_payload.get('description'):
+        request.paperset.description = request.json_payload.get('description')
+        changed = True
+    if 'private' in request.json_payload:
+        request.paperset.private = request.json_payload['private']
+        changed = True
+    if not changed:
+        return JsonResponse({'status': 'warning', 'warning': 'no changes were made'})
+    request.paperset.save()
+    return JsonResponse({'status': 'ok', 'message': 'paperset changed'})
+
+
+@allow_methods(['GET'])
+@login_required()
+def get_search_paperset(request):
+    '''
+    now this is complicated, you can search papserset's name, description, user
+    or search like search paper and then get that paper's paperset
+    and in the end, don't forget the private
+    '''
+    params: dict = request.GET
+    try:
+        per_page = int(params.get('per_page', 3))
+        page = int(params.get('page', 1))
+    except ValueError:
+        return JsonResponse({'error': 'per_page and page should be integer number'}, status=HTTPStatus.BAD_REQUEST)
+    queryset = search_paperset(request.GET, request.user)
+    page, total_page, current_page = paginate_queryset(queryset.order_by('id'), per_page, page)
+    return JsonResponse({'status': 'ok', 'data': {
+            'data_list': [i.json for i in page],
+            'total_page': total_page,
+            'current_page': current_page,
+        }})
+
+
+@allow_methods(['POST'])
+@login_required()
+@has_json_payload()
+@paperid_list_exist('POST')
+@paperset_exists('POST')
+@user_paperset_action('write')
 def post_add_to_paperset(request):
-    pass
+    already_in: list[Paper] = []
+    for paper in request.paper_list:
+        param = { 'paper': paper, 'paper_set': request.paperset }
+        if len(PaperSetContent.objects.filter(**param)) != 0:
+            already_in.append(paper)
+        else:
+            PaperSetContent.objects.create(**param)
+    if len(already_in) == 0:
+        return JsonResponse({'status': 'ok', 'message': 'all is added'})
+    return JsonResponse(
+            {
+                'status': 'warning',
+                'warning': 'some papers are already in paperset',
+                'data': {
+                    'already_in': [i.simple_json for i in already_in]
+                    }
+            })
+
+
+@allow_methods(['POST'])
+@login_required()
+@has_json_payload()
+@paperid_list_exist('POST')
+@paperset_exists('POST')
+@user_paperset_action('write')
+def post_delete_from_paperset(request):
+    for paper in request.paper_list:
+        param = { 'paper': paper, 'paper_set': request.paperset }
+        queryset = PaperSetContent.objects.filter(**param)
+        if len(queryset) != 1:
+            return JsonResponse({'status': 'error', 'error': 'paper not in paperset', 'data': { 'paper': paper.simple_json }}, status=HTTPStatus.BAD_REQUEST)
+        queryset[0].delete()
+    return JsonResponse({'status': 'ok', 'message': 'all is removed'})
+
+
+@allow_methods(['GET'])
+@login_required()
+@paperset_exists('GET')
+@user_paperset_action('read')
+def get_get_paperset_papers(request):
+    return JsonResponse({'status': 'ok', 'data': { 'paper_list': [i.paper.simple_json for i in request.paperset.has_paper.all()] }})

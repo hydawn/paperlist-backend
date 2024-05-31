@@ -162,3 +162,20 @@ def user_paperset_action(action: str):
             return JsonResponse({'status': 'error', 'error': 'internal error'}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
         return wrapper
     return decor
+
+
+def paperid_list_exist(method: str):
+    def decor(func):
+        def wrapper(request):
+            if method not in ['post', 'POST']:
+                return JsonResponse({'status': 'error', 'error': 'internal error'}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+            try:
+                paperid_list = [int(i) for i in json.loads(request.body)['paperid_list']]
+                request.paper_list = Paper.objects.filter(id__in=paperid_list)
+            except models.ObjectDoesNotExist as err:
+                return JsonResponse({'status': 'error', 'error': f'paper list does not exist: {err}'}, status=HTTPStatus.BAD_REQUEST)
+            except ValueError:
+                return JsonResponse({'status': 'error', 'error': 'paperid should be integers'}, status=HTTPStatus.BAD_REQUEST)
+            return func(request)
+        return wrapper
+    return decor
