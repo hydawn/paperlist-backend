@@ -6,7 +6,7 @@ from http import HTTPStatus
 from django.db import models
 from django.http import JsonResponse
 
-from .models import Paper
+from .models import Paper, PaperSet
 
 
 def has_json_payload():
