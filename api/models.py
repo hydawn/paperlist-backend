@@ -118,7 +118,7 @@ class PaperStarComments(TypedModel):
     star = models.IntegerField(
             validators=[
                 MinValueValidator(1, message='stars must be at least 1'),
-                MaxValueValidator(5, message='stars cannot be more than 5')
+                MaxValueValidator(10, message='stars cannot be more than 10')
             ]
         )
     commented_on = models.DateTimeField(auto_now_add=True)
