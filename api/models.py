@@ -116,11 +116,12 @@ class PaperSet(TypedModel):
     @property
     def json(self):
         return {
+                'papersetid': str(self.id),
                 'userid': str(self.user.id),
                 'username': self.user.username,
                 'name': self.name,
                 'description': self.description,
-                'private': self.private
+                'is_private': self.private
                 }
 
 
