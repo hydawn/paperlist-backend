@@ -107,14 +107,13 @@ def post_delete_paper(request):
 
 
 @allow_methods(['GET'])
-@has_query_params(['per_page', 'page'])
 @login_required()
 def get_search_paper(request):
     ''' search by title/uploader/author/journal '''
     params: dict = request.GET
     try:
-        per_page = int(params['per_page'])
-        page = int(params['page'])
+        per_page = int(params.get('per_page', 3))
+        page = int(params.get('page', 1))
     except ValueError:
         return JsonResponse({'error': 'per_page and page should be integer number'}, status=HTTPStatus.BAD_REQUEST)
     queryset = search_paper(params, request.user)
