@@ -1,4 +1,5 @@
 import base64
+import fitz  # PyMuPDF
 
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator
@@ -26,11 +27,27 @@ class Paper(TypedModel):
     total_citations = models.IntegerField(validators=[MinValueValidator(0, message='citations must be at least 0')])
     private = models.BooleanField(default=False)
 
+    @property
+    def file_bytes(self):
+        with open(self.file_content.name, 'rb') as file:
+            return file.read()
+
+    @property
+    def file_bytes_base64(self):
+        return base64.b64encode(self.file_bytes).decode('utf-8')
+
+    def file_bytes_preview(self, num_pages: int = 1):
+        document = fitz.open(self.file_content.name)
+        new_pdf = fitz.open()
+        for page_num in range(min(num_pages, len(document))):
+            new_pdf.insert_pdf(document, from_page=page_num, to_page=page_num)
+        pdf_bytes = new_pdf.tobytes()
+        new_pdf.close()
+        document.close()
+        return pdf_bytes
 
     @property
     def full_json(self):
-        with open(self.file_content.name, 'rb') as file:
-            file_content = base64.b64encode(file.read()).decode('utf-8')
         return {
                 'paperid': str(self.id),
                 'userid': str(self.user.id),
@@ -38,7 +55,7 @@ class Paper(TypedModel):
                 'title': self.title,
                 'abstract': self.abstract,
                 'file_name': self.file_name,
-                'file_content': file_content,
+                'file_content': self.file_bytes_base64,
                 'publication_date': str(self.publication_date),
                 'journal': self.journal,
                 'total_citations': self.total_citations,

@@ -7,7 +7,7 @@ from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.db.models import QuerySet, Q, Avg
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 
 from .models import Paper, PaperByScholar, PaperSet, PaperTextComments, \
         PaperStarComments, PaperSetContent
@@ -257,6 +257,10 @@ def get_paper_detail(request):
 @paperid_exist('GET')
 @user_can_view_paper()
 def get_paper_content(request):
+    if request.GET.get('type') == 'bytes':
+        if request.GET.get('preview_page'):
+            return HttpResponse(content=request.paper.file_bytes_preview(num_pages=int(request.GET.get('preview_page'))))
+        return HttpResponse(content=request.paper.file_bytes)
     return JsonResponse({'status': 'ok', 'data': request.paper.full_json})
 
 
