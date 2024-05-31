@@ -172,12 +172,11 @@ def get_search_paper_comment(request):
         return JsonResponse({'error': 'per_page and page should be integer number'}, status=HTTPStatus.BAD_REQUEST)
     paper_comment = PaperTextComments.objects.filter(paper=request.paper).order_by('commented_on')
     paper_comment, total_page, current_page = paginate_queryset(paper_comment, per_page, page)
-    comment_list = [{'comment': i.comment, 'commented_on': i.commented_on} for i in paper_comment]
     return JsonResponse(
             {
                 'status': 'ok',
                 'data': {
-                    'comment_list': comment_list,
+                    'comment_list': [i.json for i in paper_comment],
                     'total_page': total_page,
                     'current_page': current_page,
                 }
