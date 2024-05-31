@@ -119,3 +119,46 @@ def user_can_view_paper():
             return func(request)
         return wrapper
     return decor
+
+
+def paperset_exists(method: str):
+    def decor(func):
+        def wrapper(request):
+            if method in ['post', 'POST']:
+                papersetid = json.loads(request.body)['papersetid']
+            elif method in ['get', 'GET']:
+                # make it int?
+                try:
+                    papersetid = int(request.GET.get('papersetid'))
+                except ValueError:
+                    return JsonResponse({'status': 'error', 'error': 'papersetid should be integer'}, status=HTTPStatus.BAD_REQUEST)
+            else:
+                return  JsonResponse({'status': 'error', 'error': 'internal error'}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+            try:
+                request.paperset = PaperSet.objects.get(pk=papersetid)
+            except models.ObjectDoesNotExist:
+                return JsonResponse({'status': 'error', 'error': f'paperset of id {papersetid} does not exist'}, status=HTTPStatus.BAD_REQUEST)
+            return func(request)
+        return wrapper
+    return decor
+
+
+def user_paperset_action(action: str):
+    def decor(func):
+        def wrapper(request):
+            if action in ['read', 'comment']:
+                # the owner has the permission to read
+                if request.user == request.paperset.user:
+                    return func(request)
+                # others have no permission to read if it's private
+                if request.paperset.private:
+                    return JsonResponse({'status': 'error', 'error': 'user not authorized to read'}, status=HTTPStatus.UNAUTHORIZED)
+                return func(request)
+            if action == 'write':
+                # only the owner has the permission to write
+                if request.user == request.paperset.user:
+                    return func(request)
+                return JsonResponse({'status': 'error', 'error': 'user not authorized to write'}, status=HTTPStatus.UNAUTHORIZED)
+            return JsonResponse({'status': 'error', 'error': 'internal error'}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+        return wrapper
+    return decor
