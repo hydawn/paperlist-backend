@@ -200,7 +200,8 @@ def get_get_paper_review(request):
 @paperid_exist('GET')
 @user_can_view_paper()
 def get_paper_detail(request):
-    return JsonResponse({'status': 'ok', 'data': request.paper.simple_json})
+    detail_json = request.paper.simple_json
+    return JsonResponse({'status': 'ok', 'data': detail_json})
 
 
 @allow_methods(['GET'])
