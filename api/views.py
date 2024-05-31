@@ -221,7 +221,10 @@ def get_paper_content(request):
 @login_required()
 @has_json_payload()
 def post_insert_paperset(request):
-    PaperSet.objects.create(**request.json_payload)
+    try:
+        PaperSet.objects.create(user=request.user, **request.json_payload)
+    except Exception:
+        return JsonResponse({'error': 'paper set cannot be created'}, status=HTTPStatus.BAD_REQUEST)
     return JsonResponse({'status': 'ok', 'message': 'paperset created'})
 
 
