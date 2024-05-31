@@ -150,10 +150,13 @@ def post_review_paper(request):
         return JsonResponse({'error': 'star does not exist!'}, status=HTTPStatus.BAD_REQUEST)
     except ValueError:
         return JsonResponse({'error': 'star gotta be a number 1-5'}, status=HTTPStatus.BAD_REQUEST)
-    if len(PaperStarComments.objects.filter(paper=request.paper, user=request.user)) != 0:
-        return JsonResponse({'status': 'error', 'error': 'already exist'}, status=HTTPStatus.BAD_REQUEST)
-    PaperStarComments.objects.create(paper=request.paper, user=request.user, star=star)
-    return JsonResponse({'status': 'ok'})
+    queryset = PaperStarComments.objects.filter(paper=request.paper, user=request.user)
+    if len(queryset) == 0:
+        PaperStarComments.objects.create(paper=request.paper, user=request.user, star=star)
+        return JsonResponse({'status': 'ok'})
+    queryset[0].star = star
+    queryset[0].save()
+    return JsonResponse({'status': 'ok', 'message': 'review changed'})
 
 
 @allow_methods(['GET'])
