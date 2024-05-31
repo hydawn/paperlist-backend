@@ -26,8 +26,9 @@ class Paper(TypedModel):
     total_citations = models.IntegerField(validators=[MinValueValidator(0, message='citations must be at least 0')])
     private = models.BooleanField(default=False)
 
+
     @property
-    def detail_json(self):
+    def full_json(self):
         with open(self.file_content.name, 'rb') as file:
             file_content = base64.b64encode(file.read()).decode('utf-8')
         return {
@@ -42,7 +43,9 @@ class Paper(TypedModel):
                 'journal': self.journal,
                 'total_citations': self.total_citations,
                 'is_private': self.private,
+                'authors': [i.scholar for i in PaperByScholar.objects.filter(paper=self)]
                 }
+
 
     @property
     def simple_json(self):
@@ -51,12 +54,13 @@ class Paper(TypedModel):
                 'userid': str(self.user.id),
                 'username': self.user.username,
                 'title': self.title,
+                'abstract': self.abstract,
                 'publication_date': str(self.publication_date),
                 'journal': self.journal,
                 'total_citations': self.total_citations,
                 'is_private': self.private,
+                'authors': [i.scholar for i in PaperByScholar.objects.filter(paper=self)]
                 }
-
 
 #class Scholar(TypedModel):
 #    name = models.CharField(max_length=1024)
