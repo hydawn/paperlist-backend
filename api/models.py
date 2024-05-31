@@ -81,6 +81,12 @@ class PaperCited(TypedModel):
     paper = models.ForeignKey(Paper, on_delete=models.CASCADE, related_name='cited_by')
     cite_paper = models.ForeignKey(Paper, on_delete=models.CASCADE, related_name='cites')
 
+    class Meta:
+        constraints = [
+            UniqueConstraint(fields=['paper', 'cite_paper'], name='unique_paper_cites')
+        ]
+
+
 
 class PaperSet(TypedModel):
     # created by this user
@@ -95,6 +101,11 @@ class PaperSetContent(TypedModel):
     ''' the content of paper set '''
     paper_set = models.ForeignKey(PaperSet, on_delete=models.CASCADE)
     paper = models.ForeignKey(Paper, on_delete=models.CASCADE)
+
+    class Meta:
+        constraints = [
+            UniqueConstraint(fields=['paper', 'paper_set'], name='unique_paper_in_sets')
+        ]
 
 
 class PaperTextComments(TypedModel):
