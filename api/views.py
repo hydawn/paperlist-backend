@@ -190,8 +190,8 @@ def get_search_paper_comment(request):
 @user_can_view_paper()
 def get_get_paper_review(request):
     # review is the avg of all
-    review: float = PaperStarComments.objects.all().aggregate(Avg('star'))['star__avg']
-    return JsonResponse({'status': 'ok', 'data': { 'review': round(review, 1) }})
+    review: float | None = PaperStarComments.objects.filter(paper=request.paper).aggregate(Avg('star'))['star__avg']
+    return JsonResponse({'status': 'ok', 'data': { 'review':  0 if review is None else round(review, 1) }})
 
 
 @allow_methods(['GET'])
