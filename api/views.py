@@ -210,7 +210,7 @@ def get_paper_detail(request):
 @paperid_exist('GET')
 @user_can_view_paper()
 def get_paper_content(request):
-    return JsonResponse({'status': 'ok', 'data': request.paper.detail_json})
+    return JsonResponse({'status': 'ok', 'data': request.paper.full_json})
 
 
 @allow_methods(['POST'])
