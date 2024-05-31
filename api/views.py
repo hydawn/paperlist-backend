@@ -47,15 +47,20 @@ def save_paper(request):
 
 def search_paper(params: dict[str, str], user: User) -> QuerySet:
     use_regex: bool = params.get('regex', 'False') in ['true', 'True']
-    if params.get('title'):
-        if use_regex:
-            queryset = Paper.objects.filter(title__regex=params.get('title'))
-        elif params.get('title') == '':
-            queryset = Paper.objects.all()
+    papersetid = params.get('papersetid')
+    if papersetid:
+        paperset_set = PaperSet.objects.filter(pk=int(papersetid))
+        if len(paperset_set) != 0:
+            queryset = Paper.objects.filter(id__in=paperset_set[0].has_paper.all().values_list('paper_id', flat=True))
         else:
-            queryset = Paper.objects.filter(title__icontains=params.get('title'))
+            queryset = Paper.objects.all()
     else:
         queryset = Paper.objects.all()
+    if params.get('title'):
+        if use_regex:
+            queryset = queryset.filter(title__regex=params.get('title'))
+        elif params.get('title') != '':
+            queryset = queryset.filter(title__icontains=params.get('title'))
     if params.get('journal'):
         if use_regex:
             queryset = queryset.filter(journal__regex=params.get('journal'))
