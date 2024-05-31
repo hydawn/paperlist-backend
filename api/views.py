@@ -43,6 +43,37 @@ def save_paper(request):
     return paper, authors
 
 
+def search_paper(params: dict[str, str], user: User) -> QuerySet:
+    use_regex: bool = params.get('regex', 'False') in ['true', 'True']
+    if params.get('title'):
+        if use_regex:
+            queryset = Paper.objects.filter(title__regex=params.get('title'))
+        elif params.get('title') == '':
+            queryset = Paper.objects.all()
+        else:
+            queryset = Paper.objects.filter(title__icontains=params.get('title'))
+    else:
+        queryset = Paper.objects.all()
+    if params.get('journal'):
+        if use_regex:
+            queryset = queryset.filter(journal__regex=params.get('journal'))
+        elif params.get('journal') != '':
+            queryset = queryset.filter(journal__icontains=params.get('journal'))
+    if params.get('uploader'):
+        if use_regex:
+            queryset = queryset.filter(user__username__regex=params.get('uploader'))
+        elif params.get('uploader') != '':
+            queryset = queryset.filter(user__username__icontains=params.get('uploader'))
+    if params.get('author'):
+        if use_regex:
+            queryset = queryset.filter(paperbyscholar__scholar__regex=params.get('author'))
+        elif params.get('author') != '':
+            queryset = queryset.filter(paperbyscholar__scholar__icontains=params.get('author'))
+    # then filter private
+    # test this some day
+    return queryset.filter(Q(private=False) | Q(user=user))
+
+
 # Create your views here.
 @allow_methods(['POST'])
 @login_required()
@@ -81,39 +112,12 @@ def post_delete_paper(request):
 def get_search_paper(request):
     ''' search by title/uploader/author/journal '''
     params: dict = request.GET
-    use_regex: bool = request.GET.get('regex', 'False') in ['true', 'True']
     try:
         per_page = int(params['per_page'])
         page = int(params['page'])
     except ValueError:
         return JsonResponse({'error': 'per_page and page should be integer number'}, status=HTTPStatus.BAD_REQUEST)
-    if params.get('title'):
-        if use_regex:
-            queryset = Paper.objects.filter(title__regex=params.get('title'))
-        elif params.get('title') == '':
-            queryset = Paper.objects.all()
-        else:
-            queryset = Paper.objects.filter(title__icontains=params.get('title'))
-    else:
-        queryset = Paper.objects.all()
-    if params.get('journal'):
-        if use_regex:
-            queryset = queryset.filter(journal__regex=params.get('journal'))
-        elif params.get('journal') != '':
-            queryset = queryset.filter(journal__icontains=params.get('journal'))
-    if params.get('uploader'):
-        if use_regex:
-            queryset = queryset.filter(user__username__regex=params.get('uploader'))
-        elif params.get('uploader') != '':
-            queryset = queryset.filter(user__username__icontains=params.get('uploader'))
-    if params.get('author'):
-        if use_regex:
-            queryset = queryset.filter(paperbyscholar__scholar__regex=params.get('author'))
-        elif params.get('author') != '':
-            queryset = queryset.filter(paperbyscholar__scholar__icontains=params.get('author'))
-    # then filter private
-    # test this some day
-    queryset = queryset.filter(Q(private=False) | Q(user=request.user))
+    queryset = search_paper(params, request.user)
     page, total_page, current_page = paginate_queryset(queryset.order_by('id'), per_page, page)
     return JsonResponse({'status': 'ok', 'data': {
             'data_list': [i.simple_json for i in page],
