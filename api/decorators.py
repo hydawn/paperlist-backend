@@ -154,7 +154,7 @@ def user_paperset_action(action: str):
                 if request.paperset.private:
                     return JsonResponse({'status': 'error', 'error': 'user not authorized to read'}, status=HTTPStatus.UNAUTHORIZED)
                 return func(request)
-            if action == 'write':
+            if action in ['write']:
                 # only the owner has the permission to write
                 if request.user == request.paperset.user:
                     return func(request)
@@ -176,6 +176,19 @@ def paperid_list_exist(method: str):
                 return JsonResponse({'status': 'error', 'error': f'paper list does not exist: {err}'}, status=HTTPStatus.BAD_REQUEST)
             except ValueError:
                 return JsonResponse({'status': 'error', 'error': 'paperid should be integers'}, status=HTTPStatus.BAD_REQUEST)
+            return func(request)
+        return wrapper
+    return decor
+
+
+def get_with_pages():
+    def decor(func):
+        def wrapper(request):
+            try:
+                request.per_page = int(request.GET.get('per_page', 3))
+                request.page = int(request.GET.get('page', 1))
+            except ValueError:
+                return JsonResponse({'error': 'per_page and page should be integer number'}, status=HTTPStatus.BAD_REQUEST)
             return func(request)
         return wrapper
     return decor

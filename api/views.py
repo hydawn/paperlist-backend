@@ -11,7 +11,7 @@ from django.http import HttpResponse, JsonResponse
 
 from .models import Paper, PaperByScholar, PaperSet, PaperTextComments, \
         PaperStarComments, PaperSetContent
-from .decorators import allow_methods, login_required, has_json_payload, \
+from .decorators import allow_methods, get_with_pages, login_required, has_json_payload, \
         paperid_exist, paperid_list_exist, paperset_exists, user_can_modify_paper, has_query_params, \
         user_can_comment_paper, user_can_view_paper, user_paperset_action
 
@@ -41,7 +41,6 @@ def save_paper(request):
     # TODO: make these atomic
     paper = Paper(**form)
     paper.save()
-    print(f'paper {form["title"]} is made (but not saved yet)')
     return paper, authors
 
 
@@ -102,6 +101,8 @@ def search_paperset_only(params: dict[str, str], user: User) -> QuerySet:
             queryset = queryset.filter(user__username__regex=creater)
         else:
             queryset = queryset.filter(user__username__icontains=creater)
+    if params.get('creater_me') in [ 'True', 'true' ]:
+        queryset = queryset.filter(user=user)
     return queryset.filter(Q(private=False) | Q(user=user))
 
 
@@ -118,7 +119,7 @@ def search_paperset_bypaper(params: dict[str, str], user: User) -> QuerySet:
 
 def search_paperset(params: dict[str, str], user: User) -> QuerySet:
     for i in ['papertitle', 'paperjournal', 'paperuploader', 'paperauthor']:
-        if i in params:
+        if params.get(i):
             return search_paperset_bypaper(params, user)
     return search_paperset_only(params, user)
 
@@ -137,7 +138,6 @@ def post_insert_paper(request):
             paper, authors = save_paper(request)
             for i in authors:
                 PaperByScholar.objects.create(paper=paper, scholar=i)
-                print(f'scholar {i} is inserted')
     except Exception as err:
         return JsonResponse({'status': 'error', 'error': f'exception occured: {err}'}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
     return JsonResponse({'status': 'ok', 'message': 'paper inserted'})
@@ -156,17 +156,13 @@ def post_delete_paper(request):
 
 
 @allow_methods(['GET'])
+@get_with_pages()
 @login_required()
 def get_search_paper(request):
     ''' search by title/uploader/author/journal '''
     params: dict = request.GET
-    try:
-        per_page = int(params.get('per_page', 3))
-        page = int(params.get('page', 1))
-    except ValueError:
-        return JsonResponse({'error': 'per_page and page should be integer number'}, status=HTTPStatus.BAD_REQUEST)
     queryset = search_paper(params, request.user)
-    page, total_page, current_page = paginate_queryset(queryset.order_by('id'), per_page, page)
+    page, total_page, current_page = paginate_queryset(queryset.order_by('id'), request.per_page, request.page)
     return JsonResponse({'status': 'ok', 'data': {
             'data_list': [i.simple_json for i in page],
             'total_page': total_page,
@@ -213,17 +209,13 @@ def post_review_paper(request):
 
 @allow_methods(['GET'])
 @login_required()
-@has_query_params(['paperid', 'per_page', 'page'])
+@get_with_pages()
+@has_query_params(['paperid'])
 @paperid_exist('GET')
 @user_can_view_paper()
 def get_search_paper_comment(request):
-    try:
-        per_page = int(request.GET['per_page'])
-        page = int(request.GET['page'])
-    except ValueError:
-        return JsonResponse({'error': 'per_page and page should be integer number'}, status=HTTPStatus.BAD_REQUEST)
     paper_comment = PaperTextComments.objects.filter(paper=request.paper).order_by('commented_on')
-    paper_comment, total_page, current_page = paginate_queryset(paper_comment, per_page, page)
+    paper_comment, total_page, current_page = paginate_queryset(paper_comment, request.per_page, request.page)
     return JsonResponse(
             {
                 'status': 'ok',
@@ -303,6 +295,7 @@ def post_change_paperset(request):
 
 
 @allow_methods(['GET'])
+@get_with_pages()
 @login_required()
 def get_search_paperset(request):
     '''
@@ -310,14 +303,8 @@ def get_search_paperset(request):
     or search like search paper and then get that paper's paperset
     and in the end, don't forget the private
     '''
-    params: dict = request.GET
-    try:
-        per_page = int(params.get('per_page', 3))
-        page = int(params.get('page', 1))
-    except ValueError:
-        return JsonResponse({'error': 'per_page and page should be integer number'}, status=HTTPStatus.BAD_REQUEST)
     queryset = search_paperset(request.GET, request.user)
-    page, total_page, current_page = paginate_queryset(queryset.order_by('id'), per_page, page)
+    page, total_page, current_page = paginate_queryset(queryset.order_by('id'), request.per_page, request.page)
     return JsonResponse({'status': 'ok', 'data': {
             'data_list': [i.json for i in page],
             'total_page': total_page,
@@ -367,9 +354,28 @@ def post_delete_from_paperset(request):
     return JsonResponse({'status': 'ok', 'message': 'all is removed'})
 
 
+# @allow_methods(['GET'])
+# @login_required()
+# @paperset_exists('GET')
+# @user_paperset_action('read')
+# def get_get_paperset_papers(request):
+#     ids = request.paperset.has_paper.all().values_list('paper_id', flat=True)
+#     queryset = Paper.objects.filter(id__in=ids).filter(Q(private=False) | Q(user=request.user))
+#     return JsonResponse({'status': 'ok', 'data': { 'paper_list': [i.simple_json for i in queryset] }})
+
+
 @allow_methods(['GET'])
 @login_required()
-@paperset_exists('GET')
-@user_paperset_action('read')
-def get_get_paperset_papers(request):
-    return JsonResponse({'status': 'ok', 'data': { 'paper_list': [i.paper.simple_json for i in request.paperset.has_paper.all()] }})
+@has_query_params(['paperid'])
+@paperid_exist('GET')
+@user_can_view_paper()
+def get_get_papers_paperset(request):
+    ids = request.paper.in_paperset.all().values_list('paper_set_id', flat=True)
+    queryset = PaperSet.objects.filter(id__in=ids)
+    if request.GET.get('filter') == 'mine':
+        queryset = queryset.filter(user=request.user)
+    else:
+        queryset = queryset.filter(Q(private=False) | Q(user=request.user))
+    return JsonResponse({'status': 'ok', 'data': {
+            'data_list': [i.json for i in queryset],
+        }})
