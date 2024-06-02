@@ -4,8 +4,11 @@ import fitz  # PyMuPDF
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db import models
-from django.db.models import UniqueConstraint
+from django.db.models import UniqueConstraint, ObjectDoesNotExist
+from django.core.files.base import ContentFile
+from django.db import transaction
 
+from .widgets import file_md5
 
 class TypedModel(models.Model):
     objects: models.Manager
@@ -63,7 +66,6 @@ class Paper(TypedModel):
                 'authors': [i.scholar for i in PaperByScholar.objects.filter(paper=self)]
                 }
 
-
     @property
     def simple_json(self):
         return {
@@ -78,6 +80,76 @@ class Paper(TypedModel):
                 'is_private': self.private,
                 'authors': [i.scholar for i in PaperByScholar.objects.filter(paper=self)]
                 }
+
+    def try_change_to(self, json_payload: dict[str, str]) -> tuple[bool, str]:
+        '''
+        an input from json_payload, trying to change to that, return if changed,
+        will save()
+        return error message if any errors occurred
+        '''
+        modified = False
+        # change title
+        title = json_payload.get('title')
+        if title and title != self.title:
+            self.title = title
+            modified = True
+        # change abstract
+        abstract = json_payload.get('abstract')
+        if abstract and abstract != self.abstract:
+            self.abstract = abstract
+            modified = True
+        # change file_name
+        file_name = json_payload.get('file_name')
+        if file_name and file_name != self.file_name:
+            self.file_name = file_name
+            modified = True
+        # change file_content
+        file_content = json_payload.get('file_content')
+        if file_content:
+            file_binary, file_name = file_md5(file_content)
+            if self.file_content.name != file_name:
+                self.file_content = ContentFile(content=file_binary, name=file_name)
+                modified = True
+        # change publication_date
+        publication_date = json_payload.get('publication_date')
+        if publication_date and publication_date != self.publication_date:
+            self.publication_date = publication_date
+            modified = True
+        # change journal
+        journal = json_payload.get('journal')
+        if journal and journal != self.journal:
+            self.journal = journal
+            modified = True
+        # change total_citations
+        total_citations = json_payload.get('total_citations')
+        if total_citations and total_citations != self.total_citations:
+            self.total_citations = total_citations
+            modified = True
+        # change private
+        private = json_payload.get('private')
+        if private and private != self.private:
+            self.private = private
+            modified = True
+        authors = json_payload.get('authors')
+        try:
+            with transaction.atomic():
+                if authors is not None:
+                    for i in authors:
+                        try:
+                            PaperByScholar.objects.get(paper=self, scholar=i)
+                        except ObjectDoesNotExist:
+                            PaperByScholar.objects.create(paper=self, scholar=i)
+                            modified = True
+                    for i in PaperByScholar.objects.filter(paper=self):
+                        if i.scholar not in authors:
+                            i.delete()
+                            modified = True
+                if modified:
+                    self.save()
+        except Exception as err:
+            return modified, f'exception occured: {err}'
+        return modified, ''
+
 
 #class Scholar(TypedModel):
 #    name = models.CharField(max_length=1024)
@@ -111,6 +183,8 @@ class PaperSet(TypedModel):
     name = models.CharField(max_length=512)
     description = models.CharField(max_length=4096, null=True)
     private = models.BooleanField(default=False)
+    can_modify = models.BooleanField(default=False)
+    can_comment = models.BooleanField(default=True)
     # tags = models.CharField(max_length=4096, null=True)
 
     @property
@@ -121,7 +195,9 @@ class PaperSet(TypedModel):
                 'username': self.user.username,
                 'name': self.name,
                 'description': self.description,
-                'is_private': self.private
+                'is_private': self.private,
+                'can_modify': self.can_modify,
+                'can_comment': self.can_comment,
                 }
 
 
@@ -134,6 +210,24 @@ class PaperSetContent(TypedModel):
         constraints = [
             UniqueConstraint(fields=['paper', 'paper_set'], name='unique_paper_in_sets')
         ]
+
+
+class PaperSetTextComments(TypedModel):
+    paperset = models.ForeignKey(PaperSet, on_delete=models.CASCADE)
+    # commented by user
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    comment = models.CharField(max_length=4096)
+    commented_on = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def json(self):
+        return {
+                # 'paperid': str(self.paper.id),
+                'userid': str(self.user.id),
+                'username': self.user.username,
+                'comment': self.comment,
+                'commented_on': self.commented_on,
+            }
 
 
 class PaperTextComments(TypedModel):

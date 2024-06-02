@@ -1,6 +1,4 @@
-import base64
 from http import HTTPStatus
-from hashlib import md5
 
 from django.contrib.auth.models import User
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
@@ -10,10 +8,11 @@ from django.db.models import QuerySet, Q, Avg
 from django.http import HttpResponse, JsonResponse
 
 from .models import Paper, PaperByScholar, PaperSet, PaperTextComments, \
-        PaperStarComments, PaperSetContent
+        PaperStarComments, PaperSetContent, PaperSetTextComments
 from .decorators import allow_methods, get_with_pages, login_required, has_json_payload, \
         paperid_exist, paperid_list_exist, paperset_exists, user_can_modify_paper, has_query_params, \
         user_can_comment_paper, user_can_view_paper, user_paperset_action
+from .widgets import file_md5
 
 
 def paginate_queryset(queryset: QuerySet, per_page: int, page: int = 1):
@@ -32,10 +31,8 @@ def paginate_queryset(queryset: QuerySet, per_page: int, page: int = 1):
 def save_paper(request):
     form: dict = request.json_payload
     form['user'] = request.user
-    file_binary = base64.b64decode(form['file_content'])
-    form['file_content'] = ContentFile(
-            content=file_binary,
-            name=md5(file_binary).hexdigest())
+    file_binary, file_name = file_md5(form['file_content'])
+    form['file_content'] = ContentFile(content=file_binary, name=file_name)
     # extract authors
     authors: list[str] = form.pop('authors')
     # TODO: make these atomic
@@ -55,6 +52,10 @@ def search_paper(params: dict[str, str], user: User) -> QuerySet:
             queryset = Paper.objects.all()
     else:
         queryset = Paper.objects.all()
+    not__papersetid = params.get('not__papersetid')
+    if not__papersetid:
+        papers_excluded = PaperSetContent.objects.filter(paper_set_id=not__papersetid).values_list('paper_id', flat=True)
+        queryset = queryset.exclude(id__in=papers_excluded)
     if params.get('title'):
         if use_regex:
             queryset = queryset.filter(title__regex=params.get('title'))
@@ -229,6 +230,41 @@ def get_search_paper_comment(request):
 
 @allow_methods(['GET'])
 @login_required()
+@get_with_pages()
+@has_query_params(['papersetid'])
+@paperset_exists('GET')
+@user_paperset_action('read')
+def get_search_paperset_comment(request):
+    paperset_comment = PaperSetTextComments.objects.filter(paperset=request.paperset).order_by('commented_on')
+    paperset_comment, total_page, current_page = paginate_queryset(paperset_comment, request.per_page, request.page)
+    return JsonResponse(
+            {
+                'status': 'ok',
+                'data': {
+                    'comment_list': [i.json for i in paperset_comment],
+                    'total_page': total_page,
+                    'current_page': current_page,
+                }
+            })
+
+
+@allow_methods(['POST'])
+@login_required()
+@has_json_payload()
+@paperset_exists('post')
+@user_paperset_action('comment')
+def post_comment_paperset(request):
+    ''' create scholar if not exist '''
+    try:
+        comment = request.json_payload['comment']
+    except KeyError:
+        return JsonResponse({'error': 'comment does not exist!'}, status=HTTPStatus.BAD_REQUEST)
+    PaperSetTextComments.objects.create(paperset=request.paperset, user=request.user, comment=comment)
+    return JsonResponse({'status': 'ok'})
+
+
+@allow_methods(['GET'])
+@login_required()
 @has_query_params(['paperid'])
 @paperid_exist('GET')
 @user_can_view_paper()
@@ -379,3 +415,35 @@ def get_get_papers_paperset(request):
     return JsonResponse({'status': 'ok', 'data': {
             'data_list': [i.json for i in queryset],
         }})
+
+
+@allow_methods(['GET'])
+@login_required()
+def get_userid(request):
+    return JsonResponse({'status': 'ok', 'data': { 'userid': str(request.user.id) }})
+
+
+@allow_methods(['POST'])
+@login_required()
+@paperid_exist('POST')
+@has_json_payload()
+@user_can_modify_paper()
+def post_modify_paper(request):
+    ''' change the paper's info, and return the changed paper detail '''
+    changed, errors = request.paper.try_change_to(request.json_payload)
+    if errors != '':
+        return JsonResponse({'status': 'error', 'error': errors}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
+    if changed:
+        return JsonResponse({'status': 'ok', 'message': 'paper changed', 'data': request.paper.simple_json})
+    return JsonResponse({'status': 'ok', 'message': 'paper not changed', 'data': request.paper.simple_json})
+
+
+@allow_methods(['POST'])
+@login_required()
+@has_json_payload()
+@paperset_exists('POST')
+@user_paperset_action('delete')
+def post_delete_paperset(request):
+    ''' create scholar if not exist '''
+    request.paperset.delete()
+    return JsonResponse({'status': 'ok', 'message': 'paperset deleted'})

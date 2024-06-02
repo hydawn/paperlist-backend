@@ -155,10 +155,18 @@ def user_paperset_action(action: str):
                     return JsonResponse({'status': 'error', 'error': 'user not authorized to read'}, status=HTTPStatus.UNAUTHORIZED)
                 return func(request)
             if action in ['write']:
-                # only the owner has the permission to write
-                if request.user == request.paperset.user:
+                if request.user == request.paperset.user or request.paperset.can_modify:
                     return func(request)
                 return JsonResponse({'status': 'error', 'error': 'user not authorized to write'}, status=HTTPStatus.UNAUTHORIZED)
+            if action in ['comment']:
+                if request.user == request.paperset.user or request.paperset.can_comment:
+                    return func(request)
+                return JsonResponse({'status': 'error', 'error': 'user not authorized to comment'}, status=HTTPStatus.UNAUTHORIZED)
+            if action in ['delete']:
+                # only the owner has the permission to delete
+                if request.user == request.paperset.user:
+                    return func(request)
+                return JsonResponse({'status': 'error', 'error': 'user not authorized to delete'}, status=HTTPStatus.UNAUTHORIZED)
             return JsonResponse({'status': 'error', 'error': 'internal error'}, status=HTTPStatus.INTERNAL_SERVER_ERROR)
         return wrapper
     return decor
