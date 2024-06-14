@@ -69,3 +69,10 @@ def post_logout(request):
     ''' log the user out '''
     logout(request)
     return JsonResponse({'status': 'ok'})
+
+
+@allow_methods(['POST'])
+@login_required()
+def post_logoff(request):
+    request.user.delete()
+    return JsonResponse({'status': 'ok'})

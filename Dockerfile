@@ -30,5 +30,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy all of the application code into the container
 COPY . .
 
-# Specify the command to run on container start
-CMD ["sleep", "infinity"]
+# collect static files
+#RUN python3 manage.py collectstatic --noinput
+
+## Specify the command to run on container start
+#CMD ["python3", "manage.py", "runserver"]
+# Specify the command to run Gunicorn on container start
+CMD ["gunicorn", "--workers", "3", "--bind", "0.0.0.0:8000", "paperlistbackend.wsgi:application"]

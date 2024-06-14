@@ -9,6 +9,7 @@ urlpatterns = [
     path('login', post_login),
     path('logout', post_logout),
     path('signup', post_signup),
+    path('logoff', post_logoff),
     path('get_user_detail', get_user_detail),
     path('get_user_loggedin', get_user_loggedin),
     path('insert_paper', post_insert_paper),
