@@ -353,7 +353,7 @@ def get_search_paperset(request):
 @has_json_payload()
 @paperid_list_exist('POST')
 @paperset_exists('POST')
-@user_paperset_action('write')
+@user_paperset_action('modify')
 def post_add_to_paperset(request):
     already_in: list[Paper] = []
     for paper in request.paper_list:
@@ -379,7 +379,7 @@ def post_add_to_paperset(request):
 @has_json_payload()
 @paperid_list_exist('POST')
 @paperset_exists('POST')
-@user_paperset_action('write')
+@user_paperset_action('modify')
 def post_delete_from_paperset(request):
     for paper in request.paper_list:
         param = { 'paper': paper, 'paper_set': request.paperset }

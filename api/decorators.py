@@ -146,7 +146,7 @@ def paperset_exists(method: str):
 def user_paperset_action(action: str):
     def decor(func):
         def wrapper(request):
-            if action in ['read', 'comment']:
+            if action in ['read']:
                 # the owner has the permission to read
                 if request.user == request.paperset.user:
                     return func(request)
@@ -155,9 +155,13 @@ def user_paperset_action(action: str):
                     return JsonResponse({'status': 'error', 'error': 'user not authorized to read'}, status=HTTPStatus.UNAUTHORIZED)
                 return func(request)
             if action in ['write']:
-                if request.user == request.paperset.user or request.paperset.can_modify:
+                if request.user == request.paperset.user:
                     return func(request)
                 return JsonResponse({'status': 'error', 'error': 'user not authorized to write'}, status=HTTPStatus.UNAUTHORIZED)
+            if action in ['modify']:
+                if request.user == request.paperset.user or request.paperset.can_modify:
+                    return func(request)
+                return JsonResponse({'status': 'error', 'error': 'user not authorized to modiry'}, status=HTTPStatus.UNAUTHORIZED)
             if action in ['comment']:
                 if request.user == request.paperset.user or request.paperset.can_comment:
                     return func(request)
